@@ -9,30 +9,95 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/cosmos/cosmos-sdk/codec"
+	sdk "github.com/cosmos/cosmos-sdk/types"
+	banktypes "github.com/cosmos/cosmos-sdk/x/bank/types"
 	claimtypes "github.com/tharsis/evmos/v2/x/claims/types"
 )
 
-func getClaimGenesisState(genesis []byte, cdc codec.JSONCodec) (claimtypes.GenesisState, error) {
+type AppSate struct {
+	Bank  banktypes.GenesisState
+	Claim claimtypes.GenesisState
+}
+
+func getClaimGenesisState(genesis []byte, cdc codec.JSONCodec) (AppSate, error) {
 	var gen map[string]json.RawMessage
-	var claimGen claimtypes.GenesisState
+	var app AppSate
 
 	err := json.Unmarshal(genesis, &gen)
 	if err != nil {
-		return claimGen, err
+		return app, err
 	}
 
 	var appState map[string]json.RawMessage
 	err = json.Unmarshal(gen["app_state"], &appState)
 	if err != nil {
-		return claimGen, err
+		return app, err
 	}
 
+	var claimGen claimtypes.GenesisState
 	err = cdc.UnmarshalJSON(appState[claimtypes.ModuleName], &claimGen)
 	if err != nil {
-		return claimGen, err
+		return app, err
 	}
 
-	return claimGen, nil
+	var bankGen banktypes.GenesisState
+	err = cdc.UnmarshalJSON(appState[banktypes.ModuleName], &bankGen)
+	if err != nil {
+		return app, err
+	}
+
+	app.Claim = claimGen
+	app.Bank = bankGen
+
+	return app, nil
+}
+
+func ExistInRecords(records []claimtypes.ClaimsRecordAddress, address string) bool {
+	for _, record := range records {
+		if record.Address == address {
+			return true
+		}
+	}
+
+	return false
+}
+
+func getBankBalance(records []banktypes.Balance, address, denom string) sdk.Int {
+	for _, record := range records {
+		if record.Address == address {
+			return record.Coins.AmountOf(denom)
+		}
+	}
+
+	return sdk.ZeroInt()
+}
+
+func printDiffs(gen, exp AppSate) error {
+	minAmount := sdk.NewInt(1000000000000000)
+	diffs := make([]claimtypes.ClaimsRecordAddress, 0)
+	totalBalance := sdk.ZeroInt()
+	total50Percent := sdk.ZeroInt()
+
+	for _, genRecord := range gen.Claim.ClaimsRecords {
+		if ExistInRecords(exp.Claim.ClaimsRecords, genRecord.Address) {
+			continue
+		}
+
+		balance := getBankBalance(exp.Bank.Balances, genRecord.Address, "aevmos")
+		if balance.LT(minAmount) {
+			diffs = append(diffs, genRecord)
+
+			amount50percent := genRecord.InitialClaimableAmount.Quo(sdk.NewInt(2))
+			totalBalance = totalBalance.Add(balance)
+			total50Percent = total50Percent.Add(amount50percent)
+		}
+	}
+
+	fmt.Printf("Total missed accounts: %d\n", len(diffs))
+	fmt.Printf("Total missed balance: %s\n", totalBalance.String())
+	fmt.Printf("Total missed 50%%: %s\n", total50Percent.String())
+
+	return nil
 }
 
 func CheckClaimsCmd(cdc codec.JSONCodec) *cobra.Command {
@@ -46,6 +111,7 @@ Example:
 		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			genesisFile := args[0]
+			expGenesisFile := args[1]
 
 			genesisJSON, err := os.Open(genesisFile)
 			if err != nil {
@@ -53,19 +119,33 @@ Example:
 			}
 			defer genesisJSON.Close()
 
-			byteValue, err := ioutil.ReadAll(genesisJSON)
+			expGenesisJSON, err := os.Open(expGenesisFile)
+			if err != nil {
+				return err
+			}
+			defer genesisJSON.Close()
+
+			genBytes, err := ioutil.ReadAll(genesisJSON)
 			if err != nil {
 				return err
 			}
 
-			claimsGen, err := getClaimGenesisState(byteValue, cdc)
+			expGenBytes, err := ioutil.ReadAll(expGenesisJSON)
 			if err != nil {
 				return err
 			}
 
-			fmt.Printf("Total claims %d \n", len(claimsGen.ClaimsRecords))
+			claimsGen, err := getClaimGenesisState(genBytes, cdc)
+			if err != nil {
+				return err
+			}
 
-			return nil
+			claimsExp, err := getClaimGenesisState(expGenBytes, cdc)
+			if err != nil {
+				return err
+			}
+
+			return printDiffs(claimsGen, claimsExp)
 		},
 	}
 
