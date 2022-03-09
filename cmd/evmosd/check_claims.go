@@ -8,12 +8,11 @@ import (
 
 	"github.com/spf13/cobra"
 
-	servertypes "github.com/cosmos/cosmos-sdk/server/types"
 	claimtypes "github.com/tharsis/evmos/v2/x/claims/types"
 )
 
 func getClaimGenesisState(genesis []byte) (claimtypes.GenesisState, error) {
-	var gen servertypes.ExportedApp
+	var gen map[string]json.RawMessage
 	var claimGen claimtypes.GenesisState
 
 	err := json.Unmarshal(genesis, &gen)
@@ -22,7 +21,7 @@ func getClaimGenesisState(genesis []byte) (claimtypes.GenesisState, error) {
 	}
 
 	var appState map[string]json.RawMessage
-	err = json.Unmarshal(gen.AppState, &appState)
+	err = json.Unmarshal(gen["app_state"], &appState)
 	if err != nil {
 		return claimGen, err
 	}
@@ -37,13 +36,13 @@ func getClaimGenesisState(genesis []byte) (claimtypes.GenesisState, error) {
 
 func CheckClaimsCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "check-claims [input-genesis-file]",
+		Use:   "check-claims [input-genesis-file] [exported-genesis-file]",
 		Short: "Verify claims records",
 		Long: `Verify claims records and balanceas
 Example:
     evmosd check-claims genesis.json
 `,
-		Args: cobra.ExactArgs(4),
+		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			genesisFile := args[0]
 
