@@ -8,10 +8,11 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/cosmos/cosmos-sdk/codec"
 	claimtypes "github.com/tharsis/evmos/v2/x/claims/types"
 )
 
-func getClaimGenesisState(genesis []byte) (claimtypes.GenesisState, error) {
+func getClaimGenesisState(genesis []byte, cdc codec.JSONCodec) (claimtypes.GenesisState, error) {
 	var gen map[string]json.RawMessage
 	var claimGen claimtypes.GenesisState
 
@@ -26,7 +27,7 @@ func getClaimGenesisState(genesis []byte) (claimtypes.GenesisState, error) {
 		return claimGen, err
 	}
 
-	err = json.Unmarshal(appState[claimtypes.ModuleName], &claimGen)
+	err = cdc.UnmarshalJSON(appState[claimtypes.ModuleName], &claimGen)
 	if err != nil {
 		return claimGen, err
 	}
@@ -34,7 +35,7 @@ func getClaimGenesisState(genesis []byte) (claimtypes.GenesisState, error) {
 	return claimGen, nil
 }
 
-func CheckClaimsCmd() *cobra.Command {
+func CheckClaimsCmd(cdc codec.JSONCodec) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "check-claims [input-genesis-file] [exported-genesis-file]",
 		Short: "Verify claims records",
@@ -57,7 +58,7 @@ Example:
 				return err
 			}
 
-			claimsGen, err := getClaimGenesisState(byteValue)
+			claimsGen, err := getClaimGenesisState(byteValue, cdc)
 			if err != nil {
 				return err
 			}
