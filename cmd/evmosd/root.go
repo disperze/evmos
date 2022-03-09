@@ -117,7 +117,7 @@ func NewRootCmd() (*cobra.Command, params.EncodingConfig) {
 		NewTestnetCmd(app.ModuleBasics, banktypes.GenesisBalancesIterator{}),
 		debug.Cmd(),
 		config.Cmd(),
-		CheckClaimsCmd(),
+		CheckClaimsCmd(encodingConfig.Marshaler),
 	)
 
 	a := appCreator{encodingConfig}
