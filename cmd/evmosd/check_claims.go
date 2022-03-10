@@ -93,7 +93,7 @@ func convertBalancesToMap(balances []banktypes.Balance) map[string]banktypes.Bal
 }
 
 func printDiffs(gen, exp AppSate) error {
-	minAmount := sdk.NewInt(1000000000000000)
+	minAmount := sdk.ZeroInt()
 	diffs := make([]claimtypes.ClaimsRecordAddress, 0)
 	totalBalance := sdk.ZeroInt()
 	total50Percent := sdk.ZeroInt()
