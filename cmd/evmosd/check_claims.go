@@ -71,15 +71,23 @@ func getBankBalance(records map[string]banktypes.Balance, address, denom string)
 	return balance.Coins.AmountOf(denom)
 }
 
-func convertToMap(records []claimtypes.ClaimsRecordAddress) map[string]claimtypes.ClaimsRecordAddress {
+func convertExpGenToMap(records []claimtypes.ClaimsRecordAddress) map[string]claimtypes.ClaimsRecordAddress {
 	result := make(map[string]claimtypes.ClaimsRecordAddress)
-	initalAmount := sdk.ZeroInt()
+	sumUnclaimed := sdk.ZeroInt()
+
 	for _, record := range records {
 		result[record.Address] = record
-		initalAmount = initalAmount.Add(record.InitialClaimableAmount)
+		initialClaimablePerAction := record.InitialClaimableAmount.QuoRaw(int64(4))
+		for _, actionCompleted := range record.ActionsCompleted {
+			if !actionCompleted {
+				// NOTE: only add the initial claimable amount per action for the ones that haven't been claimed
+				sumUnclaimed = sumUnclaimed.Add(initialClaimablePerAction)
+			}
+		}
 	}
 
-	fmt.Printf("Total initial amount: %s\n", initalAmount.String())
+	fmt.Printf("Total unclaimed: %s\n", sumUnclaimed.String())
+
 	return result
 }
 
@@ -93,15 +101,17 @@ func convertBalancesToMap(balances []banktypes.Balance) map[string]banktypes.Bal
 }
 
 func printDiffs(gen, exp AppSate) error {
-	minAmount := sdk.ZeroInt()
+	minAmount := sdk.NewInt(1000000000000000)
 	diffs := make([]claimtypes.ClaimsRecordAddress, 0)
 	totalBalance := sdk.ZeroInt()
 	total50Percent := sdk.ZeroInt()
+	initalAmount := sdk.ZeroInt()
 
-	expMap := convertToMap(exp.Claim.ClaimsRecords)
+	expMap := convertExpGenToMap(exp.Claim.ClaimsRecords)
 	expBanks := convertBalancesToMap(exp.Bank.Balances)
 
 	for _, genRecord := range gen.Claim.ClaimsRecords {
+		initalAmount = initalAmount.Add(genRecord.InitialClaimableAmount)
 		_, ok := expMap[genRecord.Address]
 		if ok {
 			continue
@@ -118,9 +128,10 @@ func printDiffs(gen, exp AppSate) error {
 		}
 	}
 
+	fmt.Printf("Total initial amount: %s\n", initalAmount.String())
 	fmt.Printf("Total missed accounts: %d\n", len(diffs))
-	fmt.Printf("Total missed balance: %s\n", totalBalance.String())
-	fmt.Printf("Total missed 50%%: %s\n", total50Percent.String())
+	fmt.Printf("Total balance (missed accounts): %s\n", totalBalance.String())
+	fmt.Printf("Total missed claimable 50%%: %s\n", total50Percent.String())
 
 	return nil
 }
