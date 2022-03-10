@@ -62,14 +62,31 @@ func ExistInRecords(records []claimtypes.ClaimsRecordAddress, address string) bo
 	return false
 }
 
-func getBankBalance(records []banktypes.Balance, address, denom string) sdk.Int {
-	for _, record := range records {
-		if record.Address == address {
-			return record.Coins.AmountOf(denom)
-		}
+func getBankBalance(records map[string]banktypes.Balance, address, denom string) sdk.Int {
+	balance, ok := records[address]
+	if !ok {
+		return sdk.ZeroInt()
 	}
 
-	return sdk.ZeroInt()
+	return balance.Coins.AmountOf(denom)
+}
+
+func convertToMap(records []claimtypes.ClaimsRecordAddress) map[string]claimtypes.ClaimsRecordAddress {
+	result := make(map[string]claimtypes.ClaimsRecordAddress)
+	for _, record := range records {
+		result[record.Address] = record
+	}
+
+	return result
+}
+
+func convertBalancesToMap(balances []banktypes.Balance) map[string]banktypes.Balance {
+	result := make(map[string]banktypes.Balance)
+	for _, balance := range balances {
+		result[balance.Address] = balance
+	}
+
+	return result
 }
 
 func printDiffs(gen, exp AppSate) error {
@@ -78,12 +95,16 @@ func printDiffs(gen, exp AppSate) error {
 	totalBalance := sdk.ZeroInt()
 	total50Percent := sdk.ZeroInt()
 
+	expMap := convertToMap(exp.Claim.ClaimsRecords)
+	expBanks := convertBalancesToMap(exp.Bank.Balances)
+
 	for _, genRecord := range gen.Claim.ClaimsRecords {
-		if ExistInRecords(exp.Claim.ClaimsRecords, genRecord.Address) {
+		_, ok := expMap[genRecord.Address]
+		if !ok {
 			continue
 		}
 
-		balance := getBankBalance(exp.Bank.Balances, genRecord.Address, "aevmos")
+		balance := getBankBalance(expBanks, genRecord.Address, "aevmos")
 		if balance.LT(minAmount) {
 			diffs = append(diffs, genRecord)
 
@@ -144,6 +165,8 @@ Example:
 			if err != nil {
 				return err
 			}
+			fmt.Printf("Genesis: %d recods\n", len(claimsGen.Claim.ClaimsRecords))
+			fmt.Printf("Exported: %d recods\n", len(claimsExp.Claim.ClaimsRecords))
 
 			return printDiffs(claimsGen, claimsExp)
 		},
