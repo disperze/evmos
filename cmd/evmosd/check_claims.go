@@ -103,10 +103,11 @@ func printDiffs(gen, exp AppSate) error {
 
 	for _, genRecord := range gen.Claim.ClaimsRecords {
 		_, ok := expMap[genRecord.Address]
-		if !ok {
+		if ok {
 			continue
 		}
 
+		// record not found in exported
 		balance := getBankBalance(expBanks, genRecord.Address, "aevmos")
 		if balance.GT(minAmount) {
 			diffs = append(diffs, genRecord)
@@ -147,7 +148,7 @@ Example:
 			if err != nil {
 				return err
 			}
-			defer genesisJSON.Close()
+			defer expGenesisJSON.Close()
 
 			genBytes, err := ioutil.ReadAll(genesisJSON)
 			if err != nil {
