@@ -14,7 +14,6 @@ import (
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
 	banktypes "github.com/cosmos/cosmos-sdk/x/bank/types"
-	ethermint "github.com/tharsis/ethermint/types"
 	claimtypes "github.com/tharsis/evmos/v2/x/claims/types"
 )
 
@@ -104,16 +103,16 @@ func convertBalancesToMap(balances []banktypes.Balance) map[string]banktypes.Bal
 	return result
 }
 
-func convertAccountsToMap(authGen authtypes.GenesisState, cdc codec.Codec) (map[string]ethermint.EthAccount, error) {
-	result := make(map[string]ethermint.EthAccount)
+func convertAccountsToMap(authGen authtypes.GenesisState, cdc codec.Codec) (map[string]authtypes.AccountI, error) {
+	result := make(map[string]authtypes.AccountI)
 	for _, account := range authGen.Accounts {
-		var ethAccount ethermint.EthAccount
+		var ethAccount authtypes.AccountI
 		err := cdc.UnpackAny(account, &ethAccount)
 		if err != nil {
 			return result, err
 		}
 
-		result[ethAccount.Address] = ethAccount
+		result[ethAccount.GetAddress().String()] = ethAccount
 	}
 
 	return result, nil
@@ -150,7 +149,7 @@ func printDiffs(gen, exp AppSate, cdc codec.Codec) error {
 		}
 
 		// no locked account
-		if acc.Sequence != 0 {
+		if acc.GetSequence() != 0 {
 			continue
 		}
 
@@ -170,7 +169,7 @@ func printDiffs(gen, exp AppSate, cdc codec.Codec) error {
 
 			empData = append(empData, []string{
 				genRecord.Address, evmosBalance.String(), genRecord.InitialClaimableAmount.String(),
-				strconv.Itoa(int(acc.Sequence)), strconv.Itoa(balances.Len()),
+				strconv.Itoa(int(acc.GetSequence())), strconv.Itoa(balances.Len()),
 			})
 		}
 	}
