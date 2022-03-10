@@ -73,10 +73,13 @@ func getBankBalance(records map[string]banktypes.Balance, address, denom string)
 
 func convertToMap(records []claimtypes.ClaimsRecordAddress) map[string]claimtypes.ClaimsRecordAddress {
 	result := make(map[string]claimtypes.ClaimsRecordAddress)
+	initalAmount := sdk.ZeroInt()
 	for _, record := range records {
 		result[record.Address] = record
+		initalAmount = initalAmount.Add(record.InitialClaimableAmount)
 	}
 
+	fmt.Printf("Total initial amount: %s\n", initalAmount.String())
 	return result
 }
 
