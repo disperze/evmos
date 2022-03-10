@@ -1,25 +1,30 @@
 package main
 
 import (
+	"encoding/csv"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"os"
+	"strconv"
 
 	"github.com/spf13/cobra"
 
 	"github.com/cosmos/cosmos-sdk/codec"
 	sdk "github.com/cosmos/cosmos-sdk/types"
+	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
 	banktypes "github.com/cosmos/cosmos-sdk/x/bank/types"
+	ethermint "github.com/tharsis/ethermint/types"
 	claimtypes "github.com/tharsis/evmos/v2/x/claims/types"
 )
 
 type AppSate struct {
+	Auth  authtypes.GenesisState
 	Bank  banktypes.GenesisState
 	Claim claimtypes.GenesisState
 }
 
-func getClaimGenesisState(genesis []byte, cdc codec.JSONCodec) (AppSate, error) {
+func getClaimGenesisState(genesis []byte, cdc codec.JSONCodec, extra bool) (AppSate, error) {
 	var gen map[string]json.RawMessage
 	var app AppSate
 
@@ -40,44 +45,43 @@ func getClaimGenesisState(genesis []byte, cdc codec.JSONCodec) (AppSate, error) 
 		return app, err
 	}
 
-	var bankGen banktypes.GenesisState
-	err = cdc.UnmarshalJSON(appState[banktypes.ModuleName], &bankGen)
-	if err != nil {
-		return app, err
+	if extra {
+		var authGen authtypes.GenesisState
+		err = cdc.UnmarshalJSON(appState[authtypes.ModuleName], &authGen)
+		if err != nil {
+			return app, err
+		}
+		app.Auth = authGen
+
+		var bankGen banktypes.GenesisState
+		err = cdc.UnmarshalJSON(appState[banktypes.ModuleName], &bankGen)
+		if err != nil {
+			return app, err
+		}
+		app.Bank = bankGen
 	}
 
 	app.Claim = claimGen
-	app.Bank = bankGen
 
 	return app, nil
 }
 
-func ExistInRecords(records []claimtypes.ClaimsRecordAddress, address string) bool {
-	for _, record := range records {
-		if record.Address == address {
-			return true
-		}
-	}
-
-	return false
-}
-
-func getBankBalance(records map[string]banktypes.Balance, address, denom string) sdk.Int {
+func getBankBalance(records map[string]banktypes.Balance, address string) (sdk.Coins, error) {
 	balance, ok := records[address]
 	if !ok {
-		return sdk.ZeroInt()
+		return sdk.Coins{}, fmt.Errorf("balance %s not found", address)
 	}
 
-	return balance.Coins.AmountOf(denom)
+	return balance.Coins, nil
 }
 
 func convertExpGenToMap(records []claimtypes.ClaimsRecordAddress) map[string]claimtypes.ClaimsRecordAddress {
 	result := make(map[string]claimtypes.ClaimsRecordAddress)
 	sumUnclaimed := sdk.ZeroInt()
-
+	actions := sdk.NewInt(4)
 	for _, record := range records {
 		result[record.Address] = record
-		initialClaimablePerAction := record.InitialClaimableAmount.QuoRaw(int64(4))
+		initialClaimablePerAction := record.InitialClaimableAmount.Quo(actions)
 		for _, actionCompleted := range record.ActionsCompleted {
 			if !actionCompleted {
 				// NOTE: only add the initial claimable amount per action for the ones that haven't been claimed
@@ -100,7 +104,22 @@ func convertBalancesToMap(balances []banktypes.Balance) map[string]banktypes.Bal
 	return result
 }
 
-func printDiffs(gen, exp AppSate) error {
+func convertAccountsToMap(authGen authtypes.GenesisState, cdc codec.Codec) (map[string]ethermint.EthAccount, error) {
+	result := make(map[string]ethermint.EthAccount)
+	for _, account := range authGen.Accounts {
+		var ethAccount ethermint.EthAccount
+		err := cdc.UnpackAny(account, &ethAccount)
+		if err != nil {
+			return result, err
+		}
+
+		result[ethAccount.Address] = ethAccount
+	}
+
+	return result, nil
+}
+
+func printDiffs(gen, exp AppSate, cdc codec.Codec) error {
 	minAmount := sdk.NewInt(1000000000000000)
 	diffs := make([]claimtypes.ClaimsRecordAddress, 0)
 	totalBalance := sdk.ZeroInt()
@@ -109,6 +128,14 @@ func printDiffs(gen, exp AppSate) error {
 
 	expMap := convertExpGenToMap(exp.Claim.ClaimsRecords)
 	expBanks := convertBalancesToMap(exp.Bank.Balances)
+	expAccounts, err := convertAccountsToMap(exp.Auth, cdc)
+	if err != nil {
+		return err
+	}
+
+	empData := [][]string{
+		{"Account", "Balance", "InitialClaim", "Sequence", "HasPubkey", "TotalCoins"},
+	}
 
 	for _, genRecord := range gen.Claim.ClaimsRecords {
 		initalAmount = initalAmount.Add(genRecord.InitialClaimableAmount)
@@ -117,14 +144,34 @@ func printDiffs(gen, exp AppSate) error {
 			continue
 		}
 
+		acc, ok := expAccounts[genRecord.Address]
+		if !ok {
+			return fmt.Errorf("account %s not found", genRecord.Address)
+		}
+
+		// no locked account
+		if acc.Sequence != 0 {
+			continue
+		}
+
 		// record not found in exported
-		balance := getBankBalance(expBanks, genRecord.Address, "aevmos")
-		if balance.GT(minAmount) {
+		balances, err := getBankBalance(expBanks, genRecord.Address)
+		if err != nil {
+			return err
+		}
+
+		evmosBalance := balances.AmountOf("aevmos")
+		if evmosBalance.GT(minAmount) {
 			diffs = append(diffs, genRecord)
 
 			amount50percent := genRecord.InitialClaimableAmount.Quo(sdk.NewInt(2))
-			totalBalance = totalBalance.Add(balance)
+			totalBalance = totalBalance.Add(evmosBalance)
 			total50Percent = total50Percent.Add(amount50percent)
+
+			empData = append(empData, []string{
+				genRecord.Address, evmosBalance.String(), genRecord.InitialClaimableAmount.String(),
+				strconv.Itoa(int(acc.Sequence)), strconv.Itoa(balances.Len()),
+			})
 		}
 	}
 
@@ -133,10 +180,25 @@ func printDiffs(gen, exp AppSate) error {
 	fmt.Printf("Total balance (missed accounts): %s\n", totalBalance.String())
 	fmt.Printf("Total missed claimable 50%%: %s\n", total50Percent.String())
 
+	// saved to csv
+	csvFile, err := os.Create("claims.csv")
+
+	if err != nil {
+		return err
+	}
+	csvwriter := csv.NewWriter(csvFile)
+
+	for _, empRow := range empData {
+		_ = csvwriter.Write(empRow)
+	}
+
+	csvwriter.Flush()
+	csvFile.Close()
+
 	return nil
 }
 
-func CheckClaimsCmd(cdc codec.JSONCodec) *cobra.Command {
+func CheckClaimsCmd(cdc codec.Codec) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "check-claims [input-genesis-file] [exported-genesis-file]",
 		Short: "Verify claims records",
@@ -171,19 +233,19 @@ Example:
 				return err
 			}
 
-			claimsGen, err := getClaimGenesisState(genBytes, cdc)
+			claimsGen, err := getClaimGenesisState(genBytes, cdc, false)
 			if err != nil {
 				return err
 			}
 
-			claimsExp, err := getClaimGenesisState(expGenBytes, cdc)
+			claimsExp, err := getClaimGenesisState(expGenBytes, cdc, true)
 			if err != nil {
 				return err
 			}
 			fmt.Printf("Genesis: %d recods\n", len(claimsGen.Claim.ClaimsRecords))
 			fmt.Printf("Exported: %d recods\n", len(claimsExp.Claim.ClaimsRecords))
 
-			return printDiffs(claimsGen, claimsExp)
+			return printDiffs(claimsGen, claimsExp, cdc)
 		},
 	}
 
