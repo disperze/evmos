@@ -105,7 +105,7 @@ func printDiffs(gen, exp AppSate) error {
 		}
 
 		balance := getBankBalance(expBanks, genRecord.Address, "aevmos")
-		if balance.LT(minAmount) {
+		if balance.GT(minAmount) {
 			diffs = append(diffs, genRecord)
 
 			amount50percent := genRecord.InitialClaimableAmount.Quo(sdk.NewInt(2))
