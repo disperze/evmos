@@ -119,7 +119,7 @@ func convertAccountsToMap(authGen authtypes.GenesisState, cdc codec.Codec) (map[
 }
 
 func printDiffs(gen, exp AppSate, cdc codec.Codec) error {
-	minAmount := sdk.NewInt(1000000000000000)
+	// minAmount := sdk.NewInt(1000000000000000)
 	diffs := make([]claimtypes.ClaimsRecordAddress, 0)
 	totalBalance := sdk.ZeroInt()
 	total50Percent := sdk.ZeroInt()
@@ -133,7 +133,7 @@ func printDiffs(gen, exp AppSate, cdc codec.Codec) error {
 	}
 
 	empData := [][]string{
-		{"Account", "Balance", "InitialClaim", "Sequence", "HasPubkey", "TotalCoins"},
+		{"Account", "Balance", "InitialClaim", "Sequence", "TotalCoins"},
 	}
 
 	for _, genRecord := range gen.Claim.ClaimsRecords {
@@ -159,11 +159,11 @@ func printDiffs(gen, exp AppSate, cdc codec.Codec) error {
 			return err
 		}
 
+		amount50percent := genRecord.InitialClaimableAmount.Quo(sdk.NewInt(2))
 		evmosBalance := balances.AmountOf("aevmos")
-		if evmosBalance.GT(minAmount) {
+		if evmosBalance.GTE(amount50percent) {
 			diffs = append(diffs, genRecord)
 
-			amount50percent := genRecord.InitialClaimableAmount.Quo(sdk.NewInt(2))
 			totalBalance = totalBalance.Add(evmosBalance)
 			total50Percent = total50Percent.Add(amount50percent)
 
