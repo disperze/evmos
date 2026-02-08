@@ -26,8 +26,12 @@ func NewAnteHandler(options HandlerOptions) sdk.AnteHandler {
 			if len(opts) > 0 {
 				switch typeURL := opts[0].GetTypeUrl(); typeURL {
 				case "/ethermint.evm.v1.ExtensionOptionsEthereumTx":
+					return ctx, errorsmod.Wrapf(
+						errortypes.ErrUnauthorized,
+						"found disabled extension option: %s", typeURL,
+					)
 					// handle as *evmtypes.MsgEthereumTx
-					anteHandler = newMonoEVMAnteHandler(options)
+					// anteHandler = newMonoEVMAnteHandler(options)
 				case "/ethermint.types.v1.ExtensionOptionDynamicFeeTx":
 					// cosmos-sdk tx with dynamic fee extension
 					anteHandler = newCosmosAnteHandler(options)
