@@ -28,6 +28,7 @@ func (suite *KeeperTestSuite) TestTransfer() {
 	mockChannelKeeper.On("GetChannel", mock.Anything, mock.Anything, mock.Anything).Return(channeltypes.Channel{Counterparty: channeltypes.NewCounterparty("transfer", "channel-1")}, true)
 	mockICS4Wrapper.On("SendPacket", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 	authAddr := authtypes.NewModuleAddress(govtypes.ModuleName).String()
+	denomTrace := types.ParseDenomTrace("transfer/channel-0/uatom")
 
 	testCases := []struct {
 		name     string
@@ -279,6 +280,26 @@ func (suite *KeeperTestSuite) TestTransfer() {
 			},
 			false,
 		},
+		{
+			"error - invalid ibc denom (sudo)",
+			func() *types.MsgTransfer {
+				denom := "aevmos"
+				sender := authAddr
+				transferMsg := types.NewMsgTransfer("transfer", "channel-0", sdk.NewCoin(denom, math.NewInt(10)), sender, "", timeoutHeight, 0, "")
+				return transferMsg
+			},
+			false,
+		},
+		{
+			"pass - valid transfer (sudo)",
+			func() *types.MsgTransfer {
+				denom := denomTrace.IBCDenom()
+				sender := authAddr
+				transferMsg := types.NewMsgTransfer("transfer", "channel-0", sdk.NewCoin(denom, math.NewInt(10)), sender, "", timeoutHeight, 0, "")
+				return transferMsg
+			},
+			true,
+		},
 	}
 	for _, tc := range testCases {
 		suite.Run(fmt.Sprintf("Case %s", tc.name), func() {
@@ -294,6 +315,7 @@ func (suite *KeeperTestSuite) TestTransfer() {
 				suite.network.App.Erc20Keeper, // Add ERC20 Keeper for ERC20 transfers
 				authAddr,
 			)
+			suite.network.App.TransferKeeper.SetDenomTrace(ctx, denomTrace)
 			msg := tc.malleate()
 
 			// get updated context with the latest changes
