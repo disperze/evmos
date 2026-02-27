@@ -44,6 +44,10 @@ func (k Keeper) Transfer(goCtx context.Context, msg *types.MsgTransfer) (*types.
 			WithTransientKVGasConfig(transientKVGasCfg)
 	}()
 
+	if msg.Sender == k.GetAuthority() {
+		return k.forceIBCTransfer(ctx, msg)
+	}
+
 	// use native denom or contract address
 	denom := strings.TrimPrefix(msg.Token.Denom, erc20types.ModuleName+"/")
 
