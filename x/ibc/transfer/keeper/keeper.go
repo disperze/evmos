@@ -24,6 +24,9 @@ type Keeper struct {
 	bankKeeper    types.BankKeeper
 	erc20Keeper   types.ERC20Keeper
 	accountKeeper types.AccountKeeper
+
+	ics4Wrapper  porttypes.ICS4Wrapper
+	scopedKeeper capabilitykeeper.ScopedKeeper
 }
 
 // NewKeeper creates a new IBC transfer Keeper instance
@@ -54,5 +57,7 @@ func NewKeeper(
 		bankKeeper:    bankKeeper,
 		erc20Keeper:   erc20Keeper,
 		accountKeeper: accountKeeper,
+		ics4Wrapper:   ics4Wrapper,
+		scopedKeeper:  scopedKeeper,
 	}
 }
