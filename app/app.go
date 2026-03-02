@@ -141,7 +141,7 @@ import (
 	"github.com/evmos/evmos/v20/app/ante"
 	ethante "github.com/evmos/evmos/v20/app/ante/evm"
 	"github.com/evmos/evmos/v20/app/post"
-	v20 "github.com/evmos/evmos/v20/app/upgrades/v20"
+	v202 "github.com/evmos/evmos/v20/app/upgrades/v20_2"
 	srvflags "github.com/evmos/evmos/v20/server/flags"
 	"github.com/evmos/evmos/v20/x/erc20"
 	erc20keeper "github.com/evmos/evmos/v20/x/erc20/keeper"
@@ -1189,11 +1189,9 @@ func initParamsKeeper(
 func (app *Evmos) setupUpgradeHandlers() {
 	// v20 upgrade handler
 	app.UpgradeKeeper.SetUpgradeHandler(
-		v20.UpgradeName,
-		v20.CreateUpgradeHandler(
+		v202.UpgradeName,
+		v202.CreateUpgradeHandler(
 			app.mm, app.configurator,
-			app.EvmKeeper,
-			app.GovKeeper,
 		),
 	)
 
